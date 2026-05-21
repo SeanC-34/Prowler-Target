@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minesweeper</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Courier New', monospace;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+
+  h1 {
+    font-size: 2rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: #e94560;
+    margin-bottom: 1.5rem;
+  }
+
+  #difficulty {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 1.25rem;
+  }
+
+  #difficulty button {
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    padding: 6px 14px;
+    border: 1px solid #444;
+    background: transparent;
+    color: #aaa;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+
+  #difficulty button.active,
+  #difficulty button:hover {
+    border-color: #e94560;
+    color: #e94560;
+    background: rgba(233, 69, 96, 0.08);
+  }
+
+  #header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 600px;
+    margin-bottom: 12px;
+  }
+
+  #info {
+    display: flex;
+    gap: 20px;
+    font-size: 14px;
+    color: #aaa;
+  }
+
+  #info span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  #info strong {
+    color: #e0e0e0;
+    font-weight: normal;
+  }
+
+  #reset-btn {
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    padding: 6px 16px;
+    border: 1px solid #e94560;
+    background: transparent;
+    color: #e94560;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+
+  #reset-btn:hover {
+    background: rgba(233, 69, 96, 0.12);
+  }
+
+  #board-wrap {
+    background: #16213e;
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  #board {
+    display: inline-grid;
+    gap: 3px;
+  }
+
+  .cell {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    border: 1px solid #2e2e50;
+    background: #0f3460;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.1s, transform 0.08s;
+  }
+
+  .cell:hover:not(.revealed):not(.flagged) {
+    background: #1a4a80;
+    transform: scale(1.06);
+  }
+
+  .cell.revealed {
+    background: #1a1a2e;
+    border-color: #222244;
+    cursor: default;
+  }
+
+  .cell.flagged {
+    background: #0f3460;
+  }
+
+  .cell.mine-hit {
+    background: #4a0a0a;
+    border-color: #e94560;
+  }
+
+  .cell.mine-show {
+    background: #1a1a2e;
+    border-color: #333355;
+  }
+
+  .n1 { color: #58a6ff; }
+  .n2 { color: #3fb950; }
+  .n3 { color: #e94560; }
+  .n4 { color: #a371f7; }
+  .n5 { color: #ffa657; }
+  .n6 { color: #39d353; }
+  .n7 { color: #f78166; }
+  .n8 { color: #8b949e; }
+
+  #status {
+    margin-top: 14px;
+    font-size: 14px;
+    min-height: 20px;
+    color: #aaa;
+    text-align: center;
+    letter-spacing: 0.05em;
+  }
+
+  #status.win { color: #3fb950; }
+  #status.lose { color: #e94560; }
+</style>
+</head>
+<body>
+
+<h1>Minesweeper</h1>
+
+<div id="difficulty">
+  <button class="active" data-rows="9" data-cols="9" data-mines="10">Easy · 9×9</button>
+  <button data-rows="16" data-cols="16" data-mines="40">Medium · 16×16</button>
+</div>
+
+<div id="header">
+  <div id="info">
+    <span>🚩 <strong id="mine-count">10</strong></span>
+    <span>⏱ <strong id="timer">0s</strong></span>
+  </div>
+  <button id="reset-btn">New Game</button>
+</div>
+
+<div id="board-wrap">
+  <div id="board"></div>
+</div>
+
+<div id="status"></div>
+
+<script>
+let ROWS = 9, COLS = 9, MINES = 10;
+let board = [], revealed = [], flagged = [], mineSet = new Set();
+let gameOver = false, firstClick = true, timerInt = null, seconds = 0, flagCount = 0;
+
+function initBoard() {
+  clearInterval(timerInt);
+  seconds = 0; flagCount = 0; gameOver = false; firstClick = true;
+  document.getElementById('timer').textContent = '0s';
+  const status = document.getElementById('status');
+  status.textContent = '';
+  status.className = '';
+  board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+  revealed = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+  flagged = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+  mineSet = new Set();
+  document.getElementById('mine-count').textContent = MINES;
+  renderBoard();
+}
+
+function placeMines(safeR, safeC) {
+  while (mineSet.size < MINES) {
+    let r = Math.floor(Math.random() * ROWS);
+    let c = Math.floor(Math.random() * COLS);
+    if (Math.abs(r - safeR) <= 1 && Math.abs(c - safeC) <= 1) continue;
+    mineSet.add(r * COLS + c);
+  }
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      board[r][c] = mineSet.has(r * COLS + c) ? -1 : countAdj(r, c);
+}
+
+function countAdj(r, c) {
+  let cnt = 0;
+  for (let dr = -1; dr <= 1; dr++)
+    for (let dc = -1; dc <= 1; dc++) {
+      const nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && mineSet.has(nr * COLS + nc)) cnt++;
+    }
+  return cnt;
+}
+
+function reveal(r, c) {
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS || revealed[r][c] || flagged[r][c]) return;
+  revealed[r][c] = true;
+  if (board[r][c] === 0)
+    for (let dr = -1; dr <= 1; dr++)
+      for (let dc = -1; dc <= 1; dc++) reveal(r + dr, c + dc);
+}
+
+function startTimer() {
+  timerInt = setInterval(() => {
+    seconds++;
+    document.getElementById('timer').textContent = seconds + 's';
+  }, 1000);
+}
+
+function checkWin() {
+  let unrevealed = 0;
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++) if (!revealed[r][c]) unrevealed++;
+  return unrevealed === MINES;
+}
+
+function handleClick(r, c) {
+  if (gameOver || revealed[r][c] || flagged[r][c]) return;
+  if (firstClick) { firstClick = false; placeMines(r, c); startTimer(); }
+  if (board[r][c] === -1) {
+    gameOver = true;
+    clearInterval(timerInt);
+    revealed[r][c] = true;
+    renderBoard(r, c);
+    const s = document.getElementById('status');
+    s.textContent = '💥 Boom! Better luck next time.';
+    s.className = 'lose';
+    return;
+  }
+  reveal(r, c);
+  renderBoard();
+  if (checkWin()) {
+    gameOver = true;
+    clearInterval(timerInt);
+    const s = document.getElementById('status');
+    s.textContent = '🎉 You cleared the field in ' + seconds + 's!';
+    s.className = 'win';
+  }
+}
+
+function handleRightClick(e, r, c) {
+  e.preventDefault();
+  if (gameOver || revealed[r][c]) return;
+  flagged[r][c] = !flagged[r][c];
+  flagCount += flagged[r][c] ? 1 : -1;
+  document.getElementById('mine-count').textContent = MINES - flagCount;
+  renderBoard();
+}
+
+function renderBoard(hitR = -1, hitC = -1) {
+  const el = document.getElementById('board');
+  el.style.gridTemplateColumns = `repeat(${COLS}, 32px)`;
+  el.innerHTML = '';
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      const isHit = r === hitR && c === hitC;
+      if (revealed[r][c]) {
+        cell.classList.add(isHit ? 'mine-hit' : 'revealed');
+        if (board[r][c] === -1) cell.textContent = '💣';
+        else if (board[r][c] > 0) { cell.textContent = board[r][c]; cell.classList.add('n' + board[r][c]); }
+      } else if (gameOver && mineSet.has(r * COLS + c) && !flagged[r][c] && !isHit) {
+        cell.classList.add('mine-show');
+        cell.textContent = '💣';
+      } else if (flagged[r][c]) {
+        cell.classList.add('flagged');
+        cell.textContent = '🚩';
+      }
+      cell.addEventListener('click', () => handleClick(r, c));
+      cell.addEventListener('contextmenu', e => handleRightClick(e, r, c));
+      el.appendChild(cell);
+    }
+  }
+}
+
+document.getElementById('reset-btn').addEventListener('click', initBoard);
+document.querySelectorAll('#difficulty button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#difficulty button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    ROWS = +btn.dataset.rows;
+    COLS = +btn.dataset.cols;
+    MINES = +btn.dataset.mines;
+    initBoard();
+  });
+});
+
+initBoard();
+</script>
+</body>
+</html>
